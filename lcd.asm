@@ -2,18 +2,26 @@
 .ctrl_e:     equ 01000000b ; set, then falling edge, to latch
 .ctrl_rw:    equ 00100000b ; set for input
 .ctrl_rs:    equ 00010000b ; set for data
+.led2:       equ 00001000b
+.led1:       equ 00000100b
 .io_write:   equ 10000010b
 .io_read:    equ 10010010b
 .addr_data:  equ 0
+.addr_btns:  equ 1
 .addr_ctrl:  equ 2
 .addr_dir:   equ 3
 
+	org 0000
+	call lcd_reset
 	halt
 
 lcd_reset:
 	push af
-	; Set the reset pin
-	ld	a,.ctrl_reset
+	call .setoutput
+
+	ld a,0
+	out (.addr_ctrl),a
+	ld a,.ctrl_reset
 	out (.addr_ctrl),a
 
 	ld a,0x02
@@ -24,6 +32,7 @@ lcd_reset:
 	call .writecmd
 	ld a,0x36 ; Enable graphics
 	call .writecmd
+
 	pop af
 	ret
 
@@ -31,7 +40,7 @@ lcd_reset:
 	push af
 	ld a,.io_read
 	out (.addr_dir),a
-	ld a,(.ctrl_reset | .ctrl_rw)
+	ld a, .ctrl_reset | .ctrl_rw
 	out (.addr_ctrl),a
 	pop af
 	ret
@@ -47,11 +56,17 @@ lcd_reset:
 
 ; Return the LCD status byte in register A
 .readstatus:
-	ld a,(.ctrl_reset | .ctrl_rs | .ctrl_e | .ctrl_rw)
+	push bc
+	ld a,.ctrl_reset | .ctrl_rw
 	out (.addr_ctrl),a
 	xor .ctrl_e
 	out (.addr_ctrl),a
 	in a,(.addr_data)
+	ld b,a
+	ld a,.ctrl_reset | .ctrl_rw
+	out (.addr_ctrl),a
+	ld a,b
+	pop bc
 	ret
 
 ; Loop until the LCD isn't busy
@@ -60,7 +75,7 @@ lcd_reset:
 	call .setinput
 .waitloop:
 	call .readstatus
-	bit 7,b
+	bit 7,a
 	jr nz,.waitloop
 	pop af
 	ret
@@ -69,9 +84,11 @@ lcd_reset:
 .writecmd:
 	push af
 	call .waitnotbusy
-	out (.addr_data),a
 	call .setoutput
-	ld a,(.ctrl_reset | .ctrl_e)
+	out (.addr_data),a
+	ld a,.ctrl_reset
+	out (.addr_ctrl),a
+	xor .ctrl_e
 	out (.addr_ctrl),a
 	xor .ctrl_e
 	out (.addr_ctrl),a
@@ -81,9 +98,11 @@ lcd_reset:
 .writedata:
 	push af
 	call .waitnotbusy
-	out (.addr_data),a
 	call .setoutput
-	ld a,(.ctrl_reset | .ctrl_e | .ctrl_rs)
+	out (.addr_data),a
+	ld a, .ctrl_reset | .ctrl_rs
+	out (.addr_ctrl),a
+	xor .ctrl_e
 	out (.addr_ctrl),a
 	xor .ctrl_e
 	out (.addr_ctrl),a
