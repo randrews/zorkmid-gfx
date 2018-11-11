@@ -13,12 +13,21 @@
 
 .ram_base:     equ 0x8000
 .pixel_buffer: equ .ram_base ; Enough bits for 1 bpp for the whole screen
-.scratch:      equ .pixel_buffer+(128*8) ; 32 bytes of scratch stuff
+.page_shown:   equ .pixel_buffer + (128*8) ; What the current vertical scroll address is
+;.lcdstack:     equ .pixel_buffer+(128*8) ; pointer to stack for scratch stuff
+
+;.pushbyte: macro
+;	ld hl,(.lcdstack)
+;	inc hl
+;	ld (hl),a
+;	ld (.lcdstack),hl
+;	endm
 
 	org 0000
 
 	call lcd_reset
 	call lcd_clear
+	call lcd_redraw
 
 	halt
 
@@ -51,21 +60,46 @@ include "tiles.asm"
 set_tile:
 	ret
 
-lcd_clear:
+lcd_redraw:
 	push af
 	push bc
-	ld c,64 ; Row we're on
-.clearrow:
+	push hl
+	ld c,0 ; Row we're on
+	ld hl,(.pixel_buffer) ; Buffer byte we're on
+.drawrow:
 	ld b,0
 	call .setxy
 	ld b,16
-.send_empty:
-	ld a,0x55
+.send_byte:
+	ld a,(hl)
+	inc hl
 	call .writedata
-	djnz .send_empty
-	dec c
-	bit 7,c
+	djnz .send_byte
+	inc c
+	bit 6,c
+	jr z,.drawrow
+	pop hl
+	pop bc
+	pop af
+	ret
+
+lcd_clear:
+	push af
+	push bc
+	push hl
+	ld c,0 ; Row we're on
+	ld hl,(.pixel_buffer) ; Buffer byte we're on
+	ld a,0
+.clearrow:
+	ld b,16
+.draw_empty:
+	ld (hl),a
+	inc hl
+	djnz .draw_empty
+	inc c
+	bit 6,c
 	jr z,.clearrow
+	pop hl
 	pop bc
 	pop af
 	ret
@@ -87,6 +121,9 @@ lcd_reset:
 	call .writecmd
 	ld a,0x36 ; Enable graphics
 	call .writecmd
+
+	sub a ; We're showing the page starting at line 0
+	ld (.page_shown),a
 
 	pop af
 	ret
